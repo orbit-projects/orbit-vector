@@ -27,10 +27,16 @@ MetadataScalar = str | int | float | bool | None
 _MAX_DIMENSIONS = 65_536
 _MAX_METADATA_ITEMS = 128
 _MAX_METADATA_TEXT = 2_048
+_MIN_METADATA_INTEGER = -(2**63)
+_MAX_METADATA_INTEGER = 2**63 - 1
 
 
 class VectorEmbedding(BaseModel):
-    """Immutable, non-empty finite vector used for storage or nearest-neighbor search."""
+    """Immutable non-empty embedding with finite values and at most 65,536 dimensions.
+
+    Adapters must additionally enforce the dimension configured for the target index; the
+    package-wide maximum is a safety bound, not a promise that a provider supports that size.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -46,7 +52,11 @@ class VectorEmbedding(BaseModel):
 
 
 class VectorRecord(BaseModel):
-    """A vector and caller-owned identifier with portable scalar metadata."""
+    """A caller-identified embedding and immutable, bounded scalar metadata.
+
+    Identifiers are opaque and are not trimmed or normalized. Metadata values are portable JSON
+    scalars; adapters may impose stricter per-index limits and must reject unsupported values.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -82,10 +92,14 @@ class VectorRecord(BaseModel):
                 raise ValueError("Metadata text values exceed the size limit.")
             if any(ord(char) < 32 or ord(char) == 127 for char in key):
                 raise ValueError("Metadata keys cannot contain control characters.")
-            if isinstance(value, str) and any(
-                ord(char) < 32 or ord(char) == 127 for char in value
-            ):
+            if isinstance(value, str) and any(ord(char) < 32 or ord(char) == 127 for char in value):
                 raise ValueError("Metadata text values cannot contain control characters.")
+            if (
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and not (_MIN_METADATA_INTEGER <= value <= _MAX_METADATA_INTEGER)
+            ):
+                raise ValueError("Metadata integers must fit in a signed 64-bit value.")
             if isinstance(value, float) and not math.isfinite(value):
                 raise ValueError("Metadata numbers must be finite.")
         return copied
@@ -101,16 +115,20 @@ class VectorRecord(BaseModel):
 
 
 class VectorQuery(BaseModel):
-    """A nearest-neighbor query with an explicitly bounded result count."""
+    """A nearest-neighbor query capped at 1,000 results.
+
+    This contract carries no filter language or consistency option; adapters must expose such
+    provider-specific functionality through their own explicit API.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     embedding: VectorEmbedding
-    limit: int = Field(default=10, ge=1, le=1000)
+    limit: int = Field(default=10, strict=True, ge=1, le=1000)
 
 
 class VectorScoreKind(StrEnum):
-    """Meaning of the provider's raw vector-search score."""
+    """Meaning of a provider's raw score; the value does not imply shared scale or ordering."""
 
     SIMILARITY = "similarity"
     DISTANCE = "distance"

@@ -1,64 +1,41 @@
-# Orbit Vector: architecture and boundaries
+# Architecture and contracts
 
-## Responsibility
+## Package boundary
 
-`orbit-vector` defines provider-neutral, typed values and an async protocol for vector storage. It
-does not include an embedding model, vector database, indexing strategy, or provider SDK. Those
-belong in separately installable provider adapters, so applications can keep the same search
-contract when changing infrastructure.
-
-```bash
-python -m pip install orbit-vector
-```
-
-## Declared dependencies
-
-The following dependency declarations come from the checked-in manifests. Optional groups and development dependencies are called out separately.
-
-### `pyproject.toml`
-- `pydantic>=2.10,<3`
-- Optional `dev` group: `pytest>=8,<10`, `ruff>=0.8,<1`, `mypy>=1.13,<2`.
-
-Declared dependencies do not mean that optional providers or services are bundled with this package.
-
-## Implementation layout
-
-Representative implementation files in this checkout:
-
-- `.tox/wheel-install/orbit_vector/__init__.py`
-- `.tox/wheel-install/orbit_vector/contracts.py`
-- `src/orbit_vector/__init__.py`
-- `src/orbit_vector/contracts.py`
-
-## Public contract and scope
-
-## Contract
-
-Implement `VectorStore` with `upsert`, `get`, `search`, and `delete`. `VectorEmbedding` rejects
-empty, non-finite, or oversized vectors. `VectorRecord` carries an application-owned identifier and
-bounded, immutable scalar metadata. Search limits are bounded, and each `VectorMatch` identifies
-whether its raw score is a similarity or distance; the contract does not pretend every vendor uses
-the same score scale or ranking convention.
-
-The shared contract caps embeddings at 65,536 dimensions and metadata at 128 entries, with bounded
-key and text-value lengths. Provider adapters still validate index-specific dimensions, metrics,
-and metadata restrictions before making vendor calls.
-
-Dimensions and metric compatibility are provider/index configuration. Adapters must reject vectors
-that do not match the configured index, document their ranking behavior, and avoid silently changing
-the meaning of scores. This package does not prescribe a filter language, embedding generation,
-hybrid search, or index lifecycle API.
-
-## Integration shape
+`orbit-vector` is an optional capability package. Core does not depend on it. It defines validated
+vector records, queries, matches, score meaning, and the structural `VectorStore` protocol; it
+does not bundle a database, embedding model, network client, index manager, or provider SDK.
 
 ```text
-Orbit Core → orbit-vector capability → vendor adapter
+Orbit application → VectorStore capability → provider adapter → vector service
+       │                    │                       ├── owns vendor SDK and transport
+       │                    │                       ├── owns credentials and index settings
+       │                    │                       └── maps provider errors and scores
+       └── selects model, tenant boundary, and data lifecycle
 ```
 
-Core does not depend on this optional package. Provider adapters depend on this package's stable
-contract and own vendor-specific clients, credentials, configuration, and error translation. No
-vendor adapter is included in this workspace yet.
+The provider adapter owns provider-specific dimensions, metrics, filtering, namespace semantics,
+consistency, pagination, and resource lifecycle. It must preserve the capability's CRUD and score
+contract, and document any separate provider APIs.
 
-## Boundary rules
+## Value contract
 
-Keep provider SDKs, credentials, transports, and provider-specific error translation in provider adapters. Keep reusable capability contracts in the matching capability package and lifecycle orchestration in Core. Apply the relevant layer for this repository and preserve the dependency direction shown above.
+- `VectorEmbedding` is immutable, non-empty, finite, and capped at 65,536 dimensions. The adapter
+  must check exact index compatibility.
+- `VectorRecord` has an opaque caller-owned ID and immutable scalar metadata. Metadata is capped at
+  128 values; text is capped at 2,048 characters and integers fit signed 64-bit.
+- `VectorQuery.limit` is a strict integer from 1 to 1,000, defaulting to 10.
+- `VectorMatch` carries a finite raw score plus `VectorScoreKind.SIMILARITY` or `DISTANCE`. Score
+  units, normalization, and sorting remain provider-specific.
+- `VectorStore` exposes asynchronous `upsert`, `get`, `search`, and `delete` methods. It has no
+  lifecycle method; the adapter defines how clients are closed.
+
+Pydantic models are frozen, and record metadata is copied into a read-only mapping after
+validation. `model_dump(mode="json")` serializes metadata as a normal object. This does not imply
+that a database round trip preserves metadata types or ordering; adapters should test that behavior.
+
+## Extension boundaries
+
+Do not add vendor imports or vendor configuration to this package. Keep common value semantics
+here, provider SDKs in adapters, and application embedding generation, access policy, and data
+retention in their owning packages/application. No provider adapter is included in this checkout.
