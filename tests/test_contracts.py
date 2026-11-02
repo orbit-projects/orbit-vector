@@ -79,11 +79,22 @@ def test_vector_payload_sizes_are_bounded() -> None:
         )
 
 
-@pytest.mark.parametrize("limit", [0, -1, 1001])
-def test_query_rejects_unbounded_or_empty_result_counts(limit: int) -> None:
+@pytest.mark.parametrize("limit", [0, -1, 1001, True, 1.0])
+def test_query_rejects_unbounded_or_non_integer_result_counts(limit: object) -> None:
     """Search result counts are finite and bounded independent of provider defaults."""
     with pytest.raises(ValidationError):
         VectorQuery(embedding=VectorEmbedding(values=(1.0,)), limit=limit)
+
+
+@pytest.mark.parametrize("value", [-(2**63) - 1, 2**63])
+def test_metadata_integer_must_fit_signed_64_bits(value: int) -> None:
+    """Metadata integers remain interoperable with common JSON and typed SDK clients."""
+    with pytest.raises(ValidationError, match="signed 64-bit"):
+        VectorRecord(
+            id="doc",
+            embedding=VectorEmbedding(values=(1.0,)),
+            metadata={"rank": value},
+        )
 
 
 def test_match_preserves_provider_score_semantics() -> None:

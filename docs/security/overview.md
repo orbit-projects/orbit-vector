@@ -1,17 +1,31 @@
-# Orbit Vector: security
+# Security
 
-## Package-specific security guidance
+## Data sensitivity
 
-The README does not define separate package-specific security guarantees. Follow the implemented API and provider documentation; do not infer security properties that are not documented and tested.
+Embeddings can reveal sensitive information about their source text or records. Metadata and IDs
+can contain personal or confidential data as well. Apply the source data's classification to
+vectors, enforce access control at the adapter/provider and application layers, and review provider
+retention, backups, deletion, region, and operator access before indexing sensitive content.
 
-## Credentials and sensitive data
+Do not put credentials, access tokens, or secrets in IDs or metadata. Avoid logging embeddings,
+full records, query vectors, or metadata by default. Use bounded diagnostic identifiers only when
+they have been reviewed for disclosure risk. This package does not encrypt data, redact provider
+logs, or define tenant isolation.
 
-Use least-privilege credentials and a secret manager for provider secrets. Do not commit secrets, tokens, private keys, personal data, request bodies, raw provider errors, or opaque cursors. Enable TLS certificate verification for remote services unless package documentation gives a narrowly scoped local-development exception.
+## Provider responsibilities
 
-## Vulnerability disclosure
+The capability makes no claim about authentication, authorization, encryption at rest, TLS, or
+network transport. Provider adapters must use supported authentication, protect credentials,
+verify TLS certificates, apply least privilege, and configure bounded timeouts. Separate indexes,
+namespaces, or credentials as required by the chosen provider's documented isolation model.
 
-Follow the repository [security policy](../../SECURITY.md). Do not post vulnerability details in public issues. The policy describes private reporting alternatives without claiming that a hosting-platform setting is enabled.
+Treat IDs, metadata, and query inputs as untrusted. The models reject control characters in IDs
+and metadata text, cap dimensions and metadata volume, require finite vector and score values, and
+bound metadata integers to signed 64-bit. These checks do not replace provider-specific validation
+for index dimensions, payload size, reserved fields, filters, or resource quotas.
 
-## Limits
+## Vulnerability reporting
 
-This page records source and package documentation, not an independent security audit. Validate the package, its provider SDKs, and its deployment configuration before production use.
+Use the private reporting process described in the repository
+[security policy](../../SECURITY.md). Avoid sharing exploit details in public issues before the
+maintainers have assessed the report.
